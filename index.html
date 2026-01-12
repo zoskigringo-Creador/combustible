@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Calculadora de Combustible</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        /* Prevents pull-to-refresh on mobile to feel more like an app */
+        body {
+            overscroll-behavior-y: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        /* Hide scrollbar for cleaner look */
+        ::-webkit-scrollbar {
+            width: 0px;
+            background: transparent;
+        }
+        .touch-active:active {
+            transform: scale(0.98);
+            opacity: 0.9;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 h-screen flex flex-col font-sans text-gray-800">
+
+    <!-- Header / Total Display -->
+    <div class="bg-blue-600 text-white p-6 shadow-lg z-10 sticky top-0">
+        <div class="flex justify-between items-start">
+            <div>
+                <h1 class="text-sm font-medium text-blue-100 uppercase tracking-wider">Total Acumulado</h1>
+                <div class="flex items-baseline mt-1">
+                    <span class="text-4xl font-bold" id="displayTotal">0</span>
+                    <span class="text-xl ml-1 text-blue-200" id="unitLabel">Gs</span>
+                </div>
+            </div>
+            <button onclick="resetAll()" class="p-2 bg-blue-700 rounded-lg hover:bg-blue-800 transition-colors touch-active" aria-label="Reiniciar">
+                <i data-lucide="rotate-ccw" class="w-5 h-5 text-white"></i>
+            </button>
+        </div>
+        <p class="text-xs text-blue-200 mt-2 text-right">Registros: <span id="countDisplay">0</span></p>
+    </div>
+
+    <!-- Main Input Area -->
+    <div class="flex-none p-4 bg-white shadow-sm rounded-b-2xl z-0">
+        <div class="grid grid-cols-2 gap-4">
+            <!-- Mobile Number Input -->
+            <div class="space-y-1">
+                <label class="text-xs font-semibold text-gray-500 uppercase">Nº Móvil</label>
+                <input type="number" id="mobileInput" pattern="\d*" inputmode="numeric" 
+                    class="w-full text-xl font-bold p-3 bg-gray-50 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none transition-colors text-center placeholder-gray-300" 
+                    placeholder="Ej. 101">
+            </div>
+
+            <!-- Amount Input -->
+            <div class="space-y-1">
+                <label class="text-xs font-semibold text-gray-500 uppercase">Monto / Lts</label>
+                <input type="number" id="amountInput" pattern="\d*" inputmode="decimal" 
+                    class="w-full text-xl font-bold p-3 bg-gray-50 border-2 border-gray-200 rounded-xl focus:border-green-500 focus:outline-none transition-colors text-center placeholder-gray-300" 
+                    placeholder="0">
+            </div>
+        </div>
+
+        <!-- Add Button -->
+        <button onclick="addEntry()" 
+            class="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white text-lg font-bold py-4 rounded-xl shadow-md transition-transform touch-active flex justify-center items-center gap-2">
+            <i data-lucide="plus-circle" class="w-6 h-6"></i>
+            AGREGAR
+        </button>
+    </div>
+
+    <!-- List Area -->
+    <div class="flex-1 overflow-y-auto p-4 space-y-3" id="historyList">
+        <!-- Empty State -->
+        <div id="emptyState" class="flex flex-col items-center justify-center h-40 text-gray-400 opacity-60">
+            <i data-lucide="fuel" class="w-12 h-12 mb-2"></i>
+            <p class="text-sm">Listo para cargar móviles</p>
+        </div>
+        <!-- Items will be injected here -->
+    </div>
+
+    <!-- Unit Toggle (Optional footer) -->
+    <div class="p-2 text-center text-gray-400 text-xs bg-gray-50">
+        <button onclick="toggleUnit()" class="underline">Cambiar Unidad (Gs / Lts)</button>
+    </div>
+
+    <script>
+        // Initialize Icons
+        lucide.createIcons();
+
+        // State
+        let entries = [];
+        let unit = 'Gs'; // or 'Lts'
+
+        // DOM Elements
+        const mobileInput = document.getElementById('mobileInput');
+        const amountInput = document.getElementById('amountInput');
+        const displayTotal = document.getElementById('displayTotal');
+        const countDisplay = document.getElementById('countDisplay');
+        const historyList = document.getElementById('historyList');
+        const emptyState = document.getElementById('emptyState');
+        const unitLabel = document.getElementById('unitLabel');
+
+        // Load from LocalStorage on start
+        window.onload = () => {
+            const savedData = localStorage.getItem('fuelCalcData_Rodrigo');
+            if (savedData) {
+                entries = JSON.parse(savedData);
+                renderList();
+                updateTotal();
+            }
+            // Auto focus on mobile input
+            mobileInput.focus();
+        };
+
+        function addEntry() {
+            const mobile = mobileInput.value.trim();
+            const amount = parseFloat(amountInput.value);
+
+            // Validation
+            if (!mobile) {
+                blinkError(mobileInput);
+                return;
+            }
+            if (!amount || isNaN(amount)) {
+                blinkError(amountInput);
+                return;
+            }
+
+            // Add to Array
+            const newEntry = {
+                id: Date.now(),
+                mobile: mobile,
+                amount: amount,
+                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            };
+
+            entries.unshift(newEntry); // Add to top
+            
+            // Save & Update UI
+            saveData();
+            renderList();
+            updateTotal();
+
+            // Clear inputs and refocus for speed
+            mobileInput.value = '';
+            amountInput.value = '';
+            mobileInput.focus();
+        }
+
+        function deleteEntry(id) {
+            if(confirm('¿Borrar este registro?')) {
+                entries = entries.filter(entry => entry.id !== id);
+                saveData();
+                renderList();
+                updateTotal();
+            }
+        }
+
+        function resetAll() {
+            if (entries.length === 0) return;
+            if (confirm('¿Estás seguro de querer borrar TODO el historial?')) {
+                entries = [];
+                saveData();
+                renderList();
+                updateTotal();
+                mobileInput.value = '';
+                amountInput.value = '';
+                mobileInput.focus();
+            }
+        }
+
+        function updateTotal() {
+            const total = entries.reduce((sum, entry) => sum + entry.amount, 0);
+            
+            // Format number (thousands separator)
+            displayTotal.textContent = total.toLocaleString('es-PY');
+            countDisplay.textContent = entries.length;
+        }
+
+        function renderList() {
+            historyList.innerHTML = '';
+
+            if (entries.length === 0) {
+                historyList.appendChild(emptyState);
+                return;
+            }
+
+            entries.forEach(entry => {
+                const item = document.createElement('div');
+                item.className = 'bg-white p-4 rounded-xl shadow-sm flex justify-between items-center border-l-4 border-blue-500 animate-in fade-in slide-in-from-bottom-2 duration-300';
+                item.innerHTML = `
+                    <div class="flex items-center gap-4">
+                        <div class="bg-blue-50 p-2 rounded-lg text-blue-600 font-bold text-lg min-w-[3.5rem] text-center">
+                            ${entry.mobile}
+                        </div>
+                        <div>
+                            <p class="text-sm text-gray-400 font-medium">${entry.timestamp}</p>
+                            <p class="text-gray-900 font-semibold text-lg">${entry.amount.toLocaleString('es-PY')} <span class="text-xs text-gray-400">${unit}</span></p>
+                        </div>
+                    </div>
+                    <button onclick="deleteEntry(${entry.id})" class="p-2 text-gray-300 hover:text-red-500 transition-colors">
+                        <i data-lucide="trash-2" class="w-5 h-5"></i>
+                    </button>
+                `;
+                historyList.appendChild(item);
+            });
+            
+            // Refresh icons for new elements
+            lucide.createIcons();
+        }
+
+        function saveData() {
+            localStorage.setItem('fuelCalcData_Rodrigo', JSON.stringify(entries));
+        }
+
+        function toggleUnit() {
+            unit = unit === 'Gs' ? 'Lts' : 'Gs';
+            unitLabel.textContent = unit;
+            renderList(); // Re-render to update labels in list
+        }
+
+        function blinkError(element) {
+            element.classList.add('bg-red-50', 'border-red-500');
+            setTimeout(() => {
+                element.classList.remove('bg-red-50', 'border-red-500');
+            }, 300);
+            element.focus();
+        }
+
+        // Add Enter key support
+        amountInput.addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') {
+                addEntry();
+            }
+        });
+        
+        // Mobile enter key usually submits forms, prevent default reload if inside form, 
+        // but here we are div based. Just ensuring 'Go' on keyboard works.
+        amountInput.addEventListener('keyup', function(event) {
+            if (event.key === "Enter") {
+                addEntry();
+            }
+        });
+
+    </script>
+</body>
+</html>

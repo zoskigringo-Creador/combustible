@@ -4,129 +4,240 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     
-    <!-- Configuración para iPhone (PWA) - Crítico para pantalla completa real -->
+    <!-- PWA Config -->
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="Combustible">
-    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/483/483497.png">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="Auditoría">
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/5969/5969030.png">
 
-    <title>Calculadora de Combustible</title>
+    <title>Control de Auditoría</title>
+    
+    <!-- Librerías -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <style>
-        /* Bloquea el "Pull-to-refresh" (Deslizar para actualizar) */
-        html, body {
-            overscroll-behavior-y: none;
-            overscroll-behavior-x: none;
-            height: 100%;
-            overflow: hidden; /* Controlamos el scroll internamente */
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#1d4ed8',   /* Azul Corporativo (Blue 700) */
+                        primaryLight: '#eff6ff', /* Azul muy claro para fondos */
+                        accent: '#15803d',    /* Verde Éxito (Green 700) */
+                        accentLight: '#f0fdf4', /* Verde claro */
+                        bg: '#f8fafc',        /* Fondo casi blanco (Slate 50) */
+                        surface: '#FFFFFF'    /* Blanco puro */
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    boxShadow: {
+                        'soft': '0 4px 20px -2px rgba(29, 78, 216, 0.05)', /* Sombra azulada sutil */
+                        'card': '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)',
+                    }
+                }
+            }
         }
-        
+    </script>
+
+    <style>
+        html, body {
+            overscroll-behavior: none;
+            height: 100%;
+            overflow: hidden;
+            background-color: #f8fafc;
+        }
         body {
             -webkit-tap-highlight-color: transparent;
             padding-top: env(safe-area-inset-top);
         }
-
-        /* Estilos específicos para impresión/PDF */
-        @media print {
-            .no-print { display: none !important; }
-            body { background: white; color: black; height: auto; overflow: visible; }
-            #historyList { overflow: visible; height: auto; }
-            .print-only { display: block !important; }
-            /* Asegurar que la lista se vea completa al imprimir */
-            .overflow-y-auto { overflow: visible !important; height: auto !important; }
+        
+        /* Animación Fade Out Splash */
+        .fade-out {
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.8s ease-out;
         }
-        .print-only { display: none; }
+
+        /* Animación Slide Up elementos */
+        .slide-up {
+            animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+        @keyframes slideUp {
+            from { transform: translateY(10px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
     </style>
 </head>
-<body class="bg-gray-100 flex flex-col font-sans text-gray-800">
+<body class="flex flex-col font-sans text-gray-900 h-screen relative">
 
-    <!-- Header -->
-    <div class="bg-blue-600 text-white p-4 pb-8 shadow-lg z-10 sticky top-0 no-print">
-        <!-- Reloj y Botones Superiores -->
-        <div class="flex justify-between items-start mb-2">
-            <div id="clockDisplay" class="text-xs font-mono text-blue-200 bg-blue-800/30 px-2 py-1 rounded">
-                --/--/-- --:--:--
-            </div>
-            <div class="flex gap-2">
-                <button onclick="toggleFullScreen()" class="p-2 bg-blue-700 rounded-lg hover:bg-blue-800" aria-label="Pantalla Completa">
-                    <i data-lucide="maximize" id="fsIcon" class="w-4 h-4 text-white"></i>
-                </button>
-                <button onclick="generatePDF()" class="p-2 bg-blue-700 rounded-lg hover:bg-blue-800" aria-label="PDF">
-                    <i data-lucide="printer" class="w-4 h-4 text-white"></i>
-                </button>
-                <button onclick="resetAll()" class="p-2 bg-red-500/80 rounded-lg hover:bg-red-600" aria-label="Reiniciar">
-                    <i data-lucide="rotate-ccw" class="w-4 h-4 text-white"></i>
-                </button>
-            </div>
+    <!-- SPLASH SCREEN -->
+    <div id="splashScreen" class="absolute inset-0 z-50 bg-white flex flex-col items-center justify-center">
+        <div class="w-20 h-20 bg-primaryLight rounded-2xl flex items-center justify-center mb-6 border border-blue-100 shadow-sm">
+            <i data-lucide="fuel" class="w-10 h-10 text-primary"></i>
         </div>
+        <h1 class="text-xl font-semibold tracking-tight text-primary">Auditoría</h1>
+        <p class="text-xs text-gray-400 mt-2 font-medium tracking-wide uppercase">Cargando Sistema</p>
+    </div>
 
-        <!-- Totales -->
-        <div class="flex justify-between items-end">
-            <div>
-                <h1 class="text-xs font-medium text-blue-100 uppercase tracking-wider">Total Litros</h1>
-                <div class="flex items-baseline mt-1">
-                    <span class="text-4xl font-bold" id="displayTotal">0</span>
-                    <span class="text-xl ml-1 text-blue-200">Lts</span>
+    <!-- APP PRINCIPAL -->
+    <div id="appScreen" class="flex flex-col h-full bg-bg relative">
+        
+        <!-- Header Minimalista -->
+        <div class="bg-surface px-6 pt-6 pb-8 shadow-card z-10 sticky top-0 border-b border-gray-100">
+            <!-- Top Bar -->
+            <div class="flex justify-between items-center mb-6">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-primaryLight rounded-full flex items-center justify-center border border-blue-100">
+                        <i data-lucide="user" class="w-5 h-5 text-primary"></i>
+                    </div>
+                    <div>
+                        <p class="text-[10px] text-gray-400 uppercase font-bold tracking-wider leading-none mb-0.5">Auditor</p>
+                        <p class="text-base font-semibold text-gray-900 leading-tight">Rodrigo</p>
+                    </div>
+                </div>
+                
+                <div class="flex gap-2">
+                    <button onclick="downloadPDF()" class="w-10 h-10 rounded-full bg-gray-50 hover:bg-blue-50 border border-gray-200 hover:border-blue-200 flex items-center justify-center transition-all active:scale-95 text-gray-600 hover:text-primary" aria-label="Descargar">
+                        <i data-lucide="download" class="w-4 h-4"></i>
+                    </button>
+                    <button onclick="resetAll()" class="w-10 h-10 rounded-full bg-gray-50 hover:bg-red-50 border border-gray-200 hover:border-red-100 flex items-center justify-center transition-all active:scale-95 group" aria-label="Limpiar">
+                        <i data-lucide="refresh-cw" class="w-4 h-4 text-gray-600 group-hover:text-red-500 transition-colors"></i>
+                    </button>
                 </div>
             </div>
-            <div class="text-right">
-                <p class="text-xs text-blue-200">Móviles</p>
-                <span class="text-2xl font-semibold" id="countDisplay">0</span>
+
+            <!-- Total Display (Tarjeta Azul) -->
+            <div class="bg-primary rounded-2xl p-5 text-white shadow-lg shadow-blue-900/20 relative overflow-hidden">
+                <!-- Decorative circle -->
+                <div class="absolute -right-4 -top-4 w-24 h-24 bg-white opacity-10 rounded-full"></div>
+                <div class="absolute -left-4 -bottom-4 w-16 h-16 bg-white opacity-5 rounded-full"></div>
+                
+                <div class="flex justify-between items-end relative z-10">
+                    <div>
+                        <h2 class="text-[10px] font-bold text-blue-200 uppercase tracking-widest mb-1">Total Volumen</h2>
+                        <div class="flex items-baseline">
+                            <span class="text-4xl font-bold tracking-tight" id="displayTotal">0</span>
+                            <span class="text-lg font-medium ml-1 text-blue-200">Lts</span>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <!-- Contador en verde suave dentro del azul -->
+                        <div class="inline-flex items-center gap-1.5 bg-white/10 px-2.5 py-1 rounded-lg backdrop-blur-sm border border-white/10">
+                            <i data-lucide="hash" class="w-3 h-3 text-blue-200"></i>
+                            <span class="text-xs font-semibold text-white"><span id="countDisplay">0</span></span>
+                        </div>
+                        <div id="clockDisplay" class="text-[10px] font-mono text-blue-200 mt-2 text-right opacity-80">--:--:--</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Input Area (Integrado con bordes definidos) -->
+        <div class="mx-4 -mt-4 bg-surface rounded-2xl shadow-soft p-5 z-20 relative border border-gray-100 slide-up">
+            <div class="flex gap-3 mb-4">
+                <div class="flex-1 space-y-1.5">
+                    <label class="text-[10px] font-bold text-gray-400 uppercase tracking-wide ml-1">Nº Móvil</label>
+                    <div class="relative">
+                        <input type="number" id="mobileInput" pattern="\d*" inputmode="numeric" 
+                            class="w-full text-xl font-semibold p-3.5 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none transition-all placeholder-gray-300 text-gray-900" 
+                            placeholder="---">
+                    </div>
+                </div>
+                <div class="flex-1 space-y-1.5">
+                    <label class="text-[10px] font-bold text-gray-400 uppercase tracking-wide ml-1">Litros</label>
+                    <div class="relative">
+                        <input type="number" id="amountInput" pattern="\d*" inputmode="decimal" 
+                            class="w-full text-xl font-semibold p-3.5 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:border-accent focus:ring-1 focus:ring-accent/20 outline-none transition-all placeholder-gray-300 text-gray-900 text-right pr-10" 
+                            placeholder="0">
+                        <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-gray-400 pointer-events-none">L</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Botón de acción en VERDE -->
+            <button onclick="addEntry()" 
+                class="w-full bg-accent hover:bg-green-800 text-white text-sm font-bold py-4 rounded-xl shadow-lg shadow-green-900/10 flex justify-center items-center gap-2 active:scale-[0.98] transition-all">
+                <i data-lucide="plus" class="w-4 h-4 text-green-200"></i>
+                REGISTRAR CARGA
+            </button>
+        </div>
+
+        <!-- List Area -->
+        <div class="flex-1 overflow-y-auto px-4 pt-6 pb-20 space-y-3" id="historyList">
+            <!-- Empty State -->
+            <div id="emptyState" class="flex flex-col items-center justify-center h-40 text-gray-300 mt-4 border-2 border-dashed border-gray-200 rounded-2xl">
+                <i data-lucide="clipboard" class="w-8 h-8 mb-2 opacity-30 text-primary"></i>
+                <p class="text-xs font-medium uppercase tracking-wide opacity-50">Sin registros</p>
             </div>
         </div>
     </div>
 
-    <!-- Título solo para PDF -->
-    <div class="print-only p-4 text-center">
-        <h1 class="text-2xl font-bold">Reporte de Carga de Combustible</h1>
-        <p id="printDate" class="text-gray-500"></p>
-    </div>
-
-    <!-- Área de Input (No se imprime) -->
-    <div class="flex-none p-4 -mt-4 bg-white rounded-t-2xl shadow-sm z-20 relative no-print">
-        <div class="grid grid-cols-2 gap-4">
-            <div class="space-y-1">
-                <label class="text-xs font-semibold text-gray-500 uppercase">Nº Móvil</label>
-                <input type="number" id="mobileInput" pattern="\d*" inputmode="numeric" 
-                    class="w-full text-xl font-bold p-3 bg-gray-50 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none text-center placeholder-gray-300" 
-                    placeholder="Ej. 101">
+    <!-- PLANTILLA PDF (Diseño Tabla Técnica) -->
+    <div id="pdfTemplate" class="hidden">
+        <div class="p-10 bg-white font-sans text-gray-900" style="width: 100%; max-width: 800px;">
+            <!-- PDF Header -->
+            <div class="flex justify-between items-end border-b-2 border-blue-800 pb-4 mb-8">
+                <div>
+                    <h1 class="text-xl font-bold uppercase tracking-tight text-blue-900">Reporte de Auditoría</h1>
+                    <p class="text-xs text-gray-500 mt-1 uppercase tracking-widest">Control de Combustible</p>
+                </div>
+                <div class="text-right">
+                    <p class="text-sm font-bold text-gray-900">RODRIGO</p>
+                    <p class="text-xs text-gray-400 mt-1" id="pdfDate">--/--/----</p>
+                </div>
             </div>
 
-            <div class="space-y-1">
-                <label class="text-xs font-semibold text-gray-500 uppercase">Litros</label>
-                <input type="number" id="amountInput" pattern="\d*" inputmode="decimal" 
-                    class="w-full text-xl font-bold p-3 bg-gray-50 border-2 border-gray-200 rounded-xl focus:border-green-500 focus:outline-none text-center placeholder-gray-300" 
-                    placeholder="0">
+            <!-- Resumen Grid -->
+            <div class="grid grid-cols-2 gap-4 mb-8">
+                <div class="p-4 border border-blue-100 rounded-lg bg-blue-50">
+                    <p class="text-[10px] font-bold text-blue-400 uppercase tracking-wider mb-1">Registros</p>
+                    <p class="text-xl font-bold text-blue-900" id="pdfCount">0</p>
+                </div>
+                <div class="p-4 border border-green-100 rounded-lg bg-green-50 text-right">
+                    <p class="text-[10px] font-bold text-green-600 uppercase tracking-wider mb-1">Total Volumen</p>
+                    <p class="text-2xl font-bold text-green-800" id="pdfTotal">0 Lts</p>
+                </div>
+            </div>
+
+            <!-- Tabla -->
+            <table class="w-full text-left border-collapse text-sm">
+                <thead>
+                    <tr class="bg-gray-100 border-y border-gray-200">
+                        <th class="py-2 px-3 font-bold text-gray-600 uppercase text-xs w-1/3">Hora</th>
+                        <th class="py-2 px-3 font-bold text-gray-600 uppercase text-xs w-1/3 text-center">Móvil</th>
+                        <th class="py-2 px-3 font-bold text-gray-600 uppercase text-xs w-1/3 text-right">Litros</th>
+                    </tr>
+                </thead>
+                <tbody id="pdfTableBody">
+                    <!-- Datos -->
+                </tbody>
+            </table>
+
+            <!-- Footer -->
+            <div class="mt-12 flex justify-between items-end">
+                <div class="text-[10px] text-gray-400 font-mono">
+                    ID: <span id="pdfId">---</span>
+                </div>
+                <div class="text-center">
+                    <div class="border-b border-gray-300 w-32 mb-1"></div>
+                    <p class="text-[10px] font-bold text-gray-400 uppercase">Firma</p>
+                </div>
             </div>
         </div>
-
-        <button onclick="addEntry()" 
-            class="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white text-lg font-bold py-3 rounded-xl shadow-md flex justify-center items-center gap-2 active:scale-95 transition-transform">
-            <i data-lucide="plus-circle" class="w-6 h-6"></i>
-            CARGAR
-        </button>
-    </div>
-
-    <!-- Lista -->
-    <div class="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-100" id="historyList">
-        <div id="emptyState" class="flex flex-col items-center justify-center h-40 text-gray-400 opacity-60">
-            <i data-lucide="fuel" class="w-12 h-12 mb-2"></i>
-            <p class="text-sm">Listo para cargar</p>
-        </div>
-    </div>
-    
-    <!-- Total Footer para impresión -->
-    <div class="print-only mt-4 pt-4 border-t-2 border-gray-300 text-right">
-        <h2 class="text-xl font-bold">Total General: <span id="printTotal">0</span> Lts</h2>
     </div>
 
     <script>
         lucide.createIcons();
 
+        // --- ESTADO ---
         let entries = [];
+        const USER_NAME = "Rodrigo";
         
-        // Elementos
+        // --- ELEMENTOS ---
+        const splashScreen = document.getElementById('splashScreen');
         const mobileInput = document.getElementById('mobileInput');
         const amountInput = document.getElementById('amountInput');
         const displayTotal = document.getElementById('displayTotal');
@@ -134,50 +245,50 @@
         const historyList = document.getElementById('historyList');
         const clockDisplay = document.getElementById('clockDisplay');
 
-        // 1. Reloj en Tiempo Real
-        function updateClock() {
-            const now = new Date();
-            // Formato DD/MM/YYYY HH:MM:SS
-            const dateStr = now.toLocaleDateString('es-PY', { day: '2-digit', month: '2-digit', year: '2-digit' });
-            const timeStr = now.toLocaleTimeString('es-PY', { hour12: false });
-            clockDisplay.textContent = `${dateStr} ${timeStr}`;
-        }
-        setInterval(updateClock, 1000);
-        updateClock();
-
-        // Cargar datos
+        // --- INICIALIZACIÓN ---
         window.onload = () => {
-            const savedData = localStorage.getItem('fuelCalcData_Rodrigo_Lts');
+            // Cargar Datos
+            const savedData = localStorage.getItem('fuelCalcData_Auditor_v2');
             if (savedData) {
                 entries = JSON.parse(savedData);
                 renderList();
                 updateTotal();
             }
-            // Intento bloquear el gesto de swipe-down a nivel de JS también
-            document.body.addEventListener('touchmove', function(e) {
-                if (window.scrollY === 0 && e.touches[0].clientY > 0 && e.cancelable) {
-                    // Solo si estamos arriba del todo y intentamos bajar
-                    // Dejamos que el CSS overscroll-behavior haga su trabajo, 
-                    // pero esto es un refuerzo si el usuario desliza desde la barra de navegación.
-                }
-            }, { passive: false });
+
+            // Splash Fade Out
+            setTimeout(() => {
+                splashScreen.classList.add('fade-out');
+                setTimeout(() => splashScreen.remove(), 800);
+            }, 1000);
+
+            // Reloj
+            setInterval(() => {
+                const now = new Date();
+                clockDisplay.textContent = now.toLocaleTimeString('es-PY', {hour12: false});
+            }, 1000);
         };
 
+        // --- LÓGICA ---
         function addEntry() {
             const mobile = mobileInput.value.trim();
             const amount = parseFloat(amountInput.value);
 
             if (!mobile || !amount || isNaN(amount)) {
-                if(!mobile) blinkError(mobileInput);
-                if(!amount) blinkError(amountInput);
-                return;
+                // Pequeño feedback visual de error
+                if(!mobile) mobileInput.classList.add('bg-red-50');
+                if(!amount) amountInput.classList.add('bg-red-50');
+                setTimeout(() => {
+                    mobileInput.classList.remove('bg-red-50');
+                    amountInput.classList.remove('bg-red-50');
+                }, 300);
+                return; 
             }
 
             const newEntry = {
                 id: Date.now(),
                 mobile: mobile,
                 amount: amount,
-                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                time: new Date().toLocaleTimeString('es-PY', {hour:'2-digit', minute:'2-digit', hour12: false})
             };
 
             entries.unshift(newEntry);
@@ -185,14 +296,15 @@
             renderList();
             updateTotal();
 
+            // Limpiar y Foco
             mobileInput.value = '';
             amountInput.value = '';
             mobileInput.focus();
         }
 
         function deleteEntry(id) {
-            if(confirm('¿Borrar registro?')) {
-                entries = entries.filter(entry => entry.id !== id);
+            if(confirm('¿Eliminar registro?')) {
+                entries = entries.filter(e => e.id !== id);
                 saveData();
                 renderList();
                 updateTotal();
@@ -200,8 +312,8 @@
         }
 
         function resetAll() {
-            if (entries.length === 0) return;
-            if (confirm('¿Borrar TODO el historial?')) {
+            if(entries.length === 0) return;
+            if(confirm('¿Comenzar nueva auditoría? (Borrar todo)')) {
                 entries = [];
                 saveData();
                 renderList();
@@ -210,13 +322,9 @@
         }
 
         function updateTotal() {
-            const total = entries.reduce((sum, entry) => sum + entry.amount, 0);
+            const total = entries.reduce((sum, e) => sum + e.amount, 0);
             displayTotal.textContent = total.toLocaleString('es-PY');
             countDisplay.textContent = entries.length;
-            
-            // Actualizar total para impresión
-            const printEl = document.getElementById('printTotal');
-            if(printEl) printEl.textContent = total.toLocaleString('es-PY');
         }
 
         function renderList() {
@@ -226,67 +334,86 @@
                 return;
             }
 
-            entries.forEach(entry => {
-                const item = document.createElement('div');
-                item.className = 'bg-white p-3 rounded-xl shadow-sm flex justify-between items-center border-l-4 border-blue-500 mb-2';
-                item.innerHTML = `
-                    <div class="flex items-center gap-3">
-                        <div class="bg-blue-50 p-2 rounded-lg text-blue-600 font-bold text-lg w-14 text-center">
-                            ${entry.mobile}
+            entries.forEach((entry, index) => {
+                const el = document.createElement('div');
+                // Diseño de tarjeta con borde sutil
+                el.className = 'bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex justify-between items-center slide-up mb-0';
+                el.style.animationDelay = `${index * 0.05}s`;
+                
+                el.innerHTML = `
+                    <div class="flex items-center gap-4">
+                        <div class="flex flex-col items-center justify-center min-w-[3rem]">
+                             <span class="text-[10px] font-bold text-gray-400 uppercase mb-0.5">Móvil</span>
+                             <span class="text-lg font-bold text-gray-800">${entry.mobile}</span>
                         </div>
+                        <div class="h-8 w-px bg-gray-100"></div> <!-- Separador vertical -->
                         <div>
-                            <p class="text-xs text-gray-400 font-mono">${entry.timestamp}</p>
-                            <p class="text-gray-900 font-bold text-lg">${entry.amount} Lts</p>
+                            <p class="text-xs font-medium text-gray-400 font-mono">${entry.time}</p>
                         </div>
                     </div>
-                    <button onclick="deleteEntry(${entry.id})" class="p-2 text-gray-300 hover:text-red-500 no-print">
-                        <i data-lucide="trash-2" class="w-5 h-5"></i>
-                    </button>
+                    
+                    <div class="flex items-center gap-4">
+                         <span class="text-lg font-bold text-gray-900">${entry.amount} <small class="text-gray-400 text-xs">L</small></span>
+                         <button onclick="deleteEntry(${entry.id})" class="w-8 h-8 flex items-center justify-center rounded-lg text-gray-300 hover:bg-red-50 hover:text-red-500 transition-all">
+                            <i data-lucide="x" class="w-4 h-4"></i>
+                        </button>
+                    </div>
                 `;
-                historyList.appendChild(item);
+                historyList.appendChild(el);
             });
             lucide.createIcons();
         }
 
         function saveData() {
-            localStorage.setItem('fuelCalcData_Rodrigo_Lts', JSON.stringify(entries));
+            localStorage.setItem('fuelCalcData_Auditor_v2', JSON.stringify(entries));
         }
 
-        function blinkError(element) {
-            element.classList.add('bg-red-50', 'border-red-500');
-            setTimeout(() => element.classList.remove('bg-red-50', 'border-red-500'), 300);
-            element.focus();
-        }
-
-        // 4. PDF / Imprimir
-        function generatePDF() {
-            // Actualizar fecha de impresión
-            document.getElementById('printDate').textContent = 'Generado: ' + new Date().toLocaleString();
-            window.print();
-        }
-
-        // 3. Pantalla Completa (Fullscreen API)
-        function toggleFullScreen() {
-            const doc = window.document;
-            const docEl = doc.documentElement;
-
-            const requestFullScreen = docEl.requestFullscreen || docEl.mozRequestFullScreen || docEl.webkitRequestFullScreen || docEl.msRequestFullscreen;
-            const cancelFullScreen = doc.exitFullscreen || doc.mozCancelFullScreen || doc.webkitExitFullscreen || doc.msExitFullscreen;
-
-            if (!doc.fullscreenElement && !doc.mozFullScreenElement && !doc.webkitFullscreenElement && !doc.msFullscreenElement) {
-                if(requestFullScreen) {
-                    requestFullScreen.call(docEl);
-                } else {
-                    alert("Tu iPhone no permite pantalla completa por botón. Por favor usa la opción 'Compartir' -> 'Agregar a Inicio' para eliminar las barras del navegador.");
-                }
-            } else {
-                if(cancelFullScreen) {
-                    cancelFullScreen.call(doc);
-                }
+        // --- PDF GENERATION ---
+        function downloadPDF() {
+            if(entries.length === 0) {
+                alert("Sin datos para reportar.");
+                return;
             }
+
+            // Datos PDF
+            const now = new Date();
+            document.getElementById('pdfDate').textContent = now.toLocaleDateString('es-PY') + " " + now.toLocaleTimeString('es-PY', {hour: '2-digit', minute:'2-digit'});
+            document.getElementById('pdfTotal').textContent = displayTotal.textContent + " Lts";
+            document.getElementById('pdfCount').textContent = entries.length;
+            document.getElementById('pdfId').textContent = Math.random().toString(36).substr(2, 9).toUpperCase();
+
+            const tbody = document.getElementById('pdfTableBody');
+            tbody.innerHTML = '';
+            
+            entries.forEach(e => {
+                const row = `
+                    <tr class="border-b border-gray-100 hover:bg-gray-50">
+                        <td class="py-3 px-3 text-gray-600 font-mono">${e.time}</td>
+                        <td class="py-3 px-3 font-bold text-gray-800 text-center">${e.mobile}</td>
+                        <td class="py-3 px-3 font-bold text-gray-900 text-right">${e.amount}</td>
+                    </tr>
+                `;
+                tbody.insertAdjacentHTML('beforeend', row);
+            });
+
+            // Generar
+            const element = document.getElementById('pdfTemplate');
+            element.classList.remove('hidden');
+
+            const opt = {
+                margin:       10,
+                filename:     `Auditoria_Combustible_${USER_NAME}_${now.toISOString().split('T')[0]}.pdf`,
+                image:        { type: 'jpeg', quality: 0.98 },
+                html2canvas:  { scale: 2, useCORS: true },
+                jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            };
+
+            html2pdf().set(opt).from(element.firstElementChild).save().then(() => {
+                element.classList.add('hidden');
+            });
         }
-        
-        // Enter key support
+
+        // Enter Key
         amountInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') addEntry(); });
 
     </script>

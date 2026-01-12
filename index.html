@@ -3,154 +3,195 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    
+    <!-- Configuración para iPhone (PWA) - Crítico para pantalla completa real -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Combustible">
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/483/483497.png">
+
     <title>Calculadora de Combustible</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
-        /* Prevents pull-to-refresh on mobile to feel more like an app */
-        body {
+        /* Bloquea el "Pull-to-refresh" (Deslizar para actualizar) */
+        html, body {
             overscroll-behavior-y: none;
+            overscroll-behavior-x: none;
+            height: 100%;
+            overflow: hidden; /* Controlamos el scroll internamente */
+        }
+        
+        body {
             -webkit-tap-highlight-color: transparent;
+            padding-top: env(safe-area-inset-top);
         }
-        /* Hide scrollbar for cleaner look */
-        ::-webkit-scrollbar {
-            width: 0px;
-            background: transparent;
+
+        /* Estilos específicos para impresión/PDF */
+        @media print {
+            .no-print { display: none !important; }
+            body { background: white; color: black; height: auto; overflow: visible; }
+            #historyList { overflow: visible; height: auto; }
+            .print-only { display: block !important; }
+            /* Asegurar que la lista se vea completa al imprimir */
+            .overflow-y-auto { overflow: visible !important; height: auto !important; }
         }
-        .touch-active:active {
-            transform: scale(0.98);
-            opacity: 0.9;
-        }
+        .print-only { display: none; }
     </style>
 </head>
-<body class="bg-gray-100 h-screen flex flex-col font-sans text-gray-800">
+<body class="bg-gray-100 flex flex-col font-sans text-gray-800">
 
-    <!-- Header / Total Display -->
-    <div class="bg-blue-600 text-white p-6 shadow-lg z-10 sticky top-0">
-        <div class="flex justify-between items-start">
+    <!-- Header -->
+    <div class="bg-blue-600 text-white p-4 pb-8 shadow-lg z-10 sticky top-0 no-print">
+        <!-- Reloj y Botones Superiores -->
+        <div class="flex justify-between items-start mb-2">
+            <div id="clockDisplay" class="text-xs font-mono text-blue-200 bg-blue-800/30 px-2 py-1 rounded">
+                --/--/-- --:--:--
+            </div>
+            <div class="flex gap-2">
+                <button onclick="toggleFullScreen()" class="p-2 bg-blue-700 rounded-lg hover:bg-blue-800" aria-label="Pantalla Completa">
+                    <i data-lucide="maximize" id="fsIcon" class="w-4 h-4 text-white"></i>
+                </button>
+                <button onclick="generatePDF()" class="p-2 bg-blue-700 rounded-lg hover:bg-blue-800" aria-label="PDF">
+                    <i data-lucide="printer" class="w-4 h-4 text-white"></i>
+                </button>
+                <button onclick="resetAll()" class="p-2 bg-red-500/80 rounded-lg hover:bg-red-600" aria-label="Reiniciar">
+                    <i data-lucide="rotate-ccw" class="w-4 h-4 text-white"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Totales -->
+        <div class="flex justify-between items-end">
             <div>
-                <h1 class="text-sm font-medium text-blue-100 uppercase tracking-wider">Total Acumulado</h1>
+                <h1 class="text-xs font-medium text-blue-100 uppercase tracking-wider">Total Litros</h1>
                 <div class="flex items-baseline mt-1">
                     <span class="text-4xl font-bold" id="displayTotal">0</span>
-                    <span class="text-xl ml-1 text-blue-200" id="unitLabel">Gs</span>
+                    <span class="text-xl ml-1 text-blue-200">Lts</span>
                 </div>
             </div>
-            <button onclick="resetAll()" class="p-2 bg-blue-700 rounded-lg hover:bg-blue-800 transition-colors touch-active" aria-label="Reiniciar">
-                <i data-lucide="rotate-ccw" class="w-5 h-5 text-white"></i>
-            </button>
+            <div class="text-right">
+                <p class="text-xs text-blue-200">Móviles</p>
+                <span class="text-2xl font-semibold" id="countDisplay">0</span>
+            </div>
         </div>
-        <p class="text-xs text-blue-200 mt-2 text-right">Registros: <span id="countDisplay">0</span></p>
     </div>
 
-    <!-- Main Input Area -->
-    <div class="flex-none p-4 bg-white shadow-sm rounded-b-2xl z-0">
+    <!-- Título solo para PDF -->
+    <div class="print-only p-4 text-center">
+        <h1 class="text-2xl font-bold">Reporte de Carga de Combustible</h1>
+        <p id="printDate" class="text-gray-500"></p>
+    </div>
+
+    <!-- Área de Input (No se imprime) -->
+    <div class="flex-none p-4 -mt-4 bg-white rounded-t-2xl shadow-sm z-20 relative no-print">
         <div class="grid grid-cols-2 gap-4">
-            <!-- Mobile Number Input -->
             <div class="space-y-1">
                 <label class="text-xs font-semibold text-gray-500 uppercase">Nº Móvil</label>
                 <input type="number" id="mobileInput" pattern="\d*" inputmode="numeric" 
-                    class="w-full text-xl font-bold p-3 bg-gray-50 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none transition-colors text-center placeholder-gray-300" 
+                    class="w-full text-xl font-bold p-3 bg-gray-50 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none text-center placeholder-gray-300" 
                     placeholder="Ej. 101">
             </div>
 
-            <!-- Amount Input -->
             <div class="space-y-1">
-                <label class="text-xs font-semibold text-gray-500 uppercase">Monto / Lts</label>
+                <label class="text-xs font-semibold text-gray-500 uppercase">Litros</label>
                 <input type="number" id="amountInput" pattern="\d*" inputmode="decimal" 
-                    class="w-full text-xl font-bold p-3 bg-gray-50 border-2 border-gray-200 rounded-xl focus:border-green-500 focus:outline-none transition-colors text-center placeholder-gray-300" 
+                    class="w-full text-xl font-bold p-3 bg-gray-50 border-2 border-gray-200 rounded-xl focus:border-green-500 focus:outline-none text-center placeholder-gray-300" 
                     placeholder="0">
             </div>
         </div>
 
-        <!-- Add Button -->
         <button onclick="addEntry()" 
-            class="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white text-lg font-bold py-4 rounded-xl shadow-md transition-transform touch-active flex justify-center items-center gap-2">
+            class="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white text-lg font-bold py-3 rounded-xl shadow-md flex justify-center items-center gap-2 active:scale-95 transition-transform">
             <i data-lucide="plus-circle" class="w-6 h-6"></i>
-            AGREGAR
+            CARGAR
         </button>
     </div>
 
-    <!-- List Area -->
-    <div class="flex-1 overflow-y-auto p-4 space-y-3" id="historyList">
-        <!-- Empty State -->
+    <!-- Lista -->
+    <div class="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-100" id="historyList">
         <div id="emptyState" class="flex flex-col items-center justify-center h-40 text-gray-400 opacity-60">
             <i data-lucide="fuel" class="w-12 h-12 mb-2"></i>
-            <p class="text-sm">Listo para cargar móviles</p>
+            <p class="text-sm">Listo para cargar</p>
         </div>
-        <!-- Items will be injected here -->
     </div>
-
-    <!-- Unit Toggle (Optional footer) -->
-    <div class="p-2 text-center text-gray-400 text-xs bg-gray-50">
-        <button onclick="toggleUnit()" class="underline">Cambiar Unidad (Gs / Lts)</button>
+    
+    <!-- Total Footer para impresión -->
+    <div class="print-only mt-4 pt-4 border-t-2 border-gray-300 text-right">
+        <h2 class="text-xl font-bold">Total General: <span id="printTotal">0</span> Lts</h2>
     </div>
 
     <script>
-        // Initialize Icons
         lucide.createIcons();
 
-        // State
         let entries = [];
-        let unit = 'Gs'; // or 'Lts'
-
-        // DOM Elements
+        
+        // Elementos
         const mobileInput = document.getElementById('mobileInput');
         const amountInput = document.getElementById('amountInput');
         const displayTotal = document.getElementById('displayTotal');
         const countDisplay = document.getElementById('countDisplay');
         const historyList = document.getElementById('historyList');
-        const emptyState = document.getElementById('emptyState');
-        const unitLabel = document.getElementById('unitLabel');
+        const clockDisplay = document.getElementById('clockDisplay');
 
-        // Load from LocalStorage on start
+        // 1. Reloj en Tiempo Real
+        function updateClock() {
+            const now = new Date();
+            // Formato DD/MM/YYYY HH:MM:SS
+            const dateStr = now.toLocaleDateString('es-PY', { day: '2-digit', month: '2-digit', year: '2-digit' });
+            const timeStr = now.toLocaleTimeString('es-PY', { hour12: false });
+            clockDisplay.textContent = `${dateStr} ${timeStr}`;
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        // Cargar datos
         window.onload = () => {
-            const savedData = localStorage.getItem('fuelCalcData_Rodrigo');
+            const savedData = localStorage.getItem('fuelCalcData_Rodrigo_Lts');
             if (savedData) {
                 entries = JSON.parse(savedData);
                 renderList();
                 updateTotal();
             }
-            // Auto focus on mobile input
-            mobileInput.focus();
+            // Intento bloquear el gesto de swipe-down a nivel de JS también
+            document.body.addEventListener('touchmove', function(e) {
+                if (window.scrollY === 0 && e.touches[0].clientY > 0 && e.cancelable) {
+                    // Solo si estamos arriba del todo y intentamos bajar
+                    // Dejamos que el CSS overscroll-behavior haga su trabajo, 
+                    // pero esto es un refuerzo si el usuario desliza desde la barra de navegación.
+                }
+            }, { passive: false });
         };
 
         function addEntry() {
             const mobile = mobileInput.value.trim();
             const amount = parseFloat(amountInput.value);
 
-            // Validation
-            if (!mobile) {
-                blinkError(mobileInput);
-                return;
-            }
-            if (!amount || isNaN(amount)) {
-                blinkError(amountInput);
+            if (!mobile || !amount || isNaN(amount)) {
+                if(!mobile) blinkError(mobileInput);
+                if(!amount) blinkError(amountInput);
                 return;
             }
 
-            // Add to Array
             const newEntry = {
                 id: Date.now(),
                 mobile: mobile,
                 amount: amount,
-                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
             };
 
-            entries.unshift(newEntry); // Add to top
-            
-            // Save & Update UI
+            entries.unshift(newEntry);
             saveData();
             renderList();
             updateTotal();
 
-            // Clear inputs and refocus for speed
             mobileInput.value = '';
             amountInput.value = '';
             mobileInput.focus();
         }
 
         function deleteEntry(id) {
-            if(confirm('¿Borrar este registro?')) {
+            if(confirm('¿Borrar registro?')) {
                 entries = entries.filter(entry => entry.id !== id);
                 saveData();
                 renderList();
@@ -160,89 +201,93 @@
 
         function resetAll() {
             if (entries.length === 0) return;
-            if (confirm('¿Estás seguro de querer borrar TODO el historial?')) {
+            if (confirm('¿Borrar TODO el historial?')) {
                 entries = [];
                 saveData();
                 renderList();
                 updateTotal();
-                mobileInput.value = '';
-                amountInput.value = '';
-                mobileInput.focus();
             }
         }
 
         function updateTotal() {
             const total = entries.reduce((sum, entry) => sum + entry.amount, 0);
-            
-            // Format number (thousands separator)
             displayTotal.textContent = total.toLocaleString('es-PY');
             countDisplay.textContent = entries.length;
+            
+            // Actualizar total para impresión
+            const printEl = document.getElementById('printTotal');
+            if(printEl) printEl.textContent = total.toLocaleString('es-PY');
         }
 
         function renderList() {
             historyList.innerHTML = '';
-
             if (entries.length === 0) {
-                historyList.appendChild(emptyState);
+                historyList.appendChild(document.getElementById('emptyState').cloneNode(true));
                 return;
             }
 
             entries.forEach(entry => {
                 const item = document.createElement('div');
-                item.className = 'bg-white p-4 rounded-xl shadow-sm flex justify-between items-center border-l-4 border-blue-500 animate-in fade-in slide-in-from-bottom-2 duration-300';
+                item.className = 'bg-white p-3 rounded-xl shadow-sm flex justify-between items-center border-l-4 border-blue-500 mb-2';
                 item.innerHTML = `
-                    <div class="flex items-center gap-4">
-                        <div class="bg-blue-50 p-2 rounded-lg text-blue-600 font-bold text-lg min-w-[3.5rem] text-center">
+                    <div class="flex items-center gap-3">
+                        <div class="bg-blue-50 p-2 rounded-lg text-blue-600 font-bold text-lg w-14 text-center">
                             ${entry.mobile}
                         </div>
                         <div>
-                            <p class="text-sm text-gray-400 font-medium">${entry.timestamp}</p>
-                            <p class="text-gray-900 font-semibold text-lg">${entry.amount.toLocaleString('es-PY')} <span class="text-xs text-gray-400">${unit}</span></p>
+                            <p class="text-xs text-gray-400 font-mono">${entry.timestamp}</p>
+                            <p class="text-gray-900 font-bold text-lg">${entry.amount} Lts</p>
                         </div>
                     </div>
-                    <button onclick="deleteEntry(${entry.id})" class="p-2 text-gray-300 hover:text-red-500 transition-colors">
+                    <button onclick="deleteEntry(${entry.id})" class="p-2 text-gray-300 hover:text-red-500 no-print">
                         <i data-lucide="trash-2" class="w-5 h-5"></i>
                     </button>
                 `;
                 historyList.appendChild(item);
             });
-            
-            // Refresh icons for new elements
             lucide.createIcons();
         }
 
         function saveData() {
-            localStorage.setItem('fuelCalcData_Rodrigo', JSON.stringify(entries));
-        }
-
-        function toggleUnit() {
-            unit = unit === 'Gs' ? 'Lts' : 'Gs';
-            unitLabel.textContent = unit;
-            renderList(); // Re-render to update labels in list
+            localStorage.setItem('fuelCalcData_Rodrigo_Lts', JSON.stringify(entries));
         }
 
         function blinkError(element) {
             element.classList.add('bg-red-50', 'border-red-500');
-            setTimeout(() => {
-                element.classList.remove('bg-red-50', 'border-red-500');
-            }, 300);
+            setTimeout(() => element.classList.remove('bg-red-50', 'border-red-500'), 300);
             element.focus();
         }
 
-        // Add Enter key support
-        amountInput.addEventListener('keypress', function (e) {
-            if (e.key === 'Enter') {
-                addEntry();
+        // 4. PDF / Imprimir
+        function generatePDF() {
+            // Actualizar fecha de impresión
+            document.getElementById('printDate').textContent = 'Generado: ' + new Date().toLocaleString();
+            window.print();
+        }
+
+        // 3. Pantalla Completa (Fullscreen API)
+        function toggleFullScreen() {
+            const doc = window.document;
+            const docEl = doc.documentElement;
+
+            const requestFullScreen = docEl.requestFullscreen || docEl.mozRequestFullScreen || docEl.webkitRequestFullScreen || docEl.msRequestFullscreen;
+            const cancelFullScreen = doc.exitFullscreen || doc.mozCancelFullScreen || doc.webkitExitFullscreen || doc.msExitFullscreen;
+
+            if (!doc.fullscreenElement && !doc.mozFullScreenElement && !doc.webkitFullscreenElement && !doc.msFullscreenElement) {
+                if(requestFullScreen) {
+                    requestFullScreen.call(docEl);
+                } else {
+                    alert("Tu iPhone no permite pantalla completa por botón. Por favor usa la opción 'Compartir' -> 'Agregar a Inicio' para eliminar las barras del navegador.");
+                }
+            } else {
+                if(cancelFullScreen) {
+                    cancelFullScreen.call(doc);
+                }
             }
-        });
+        }
         
-        // Mobile enter key usually submits forms, prevent default reload if inside form, 
-        // but here we are div based. Just ensuring 'Go' on keyboard works.
-        amountInput.addEventListener('keyup', function(event) {
-            if (event.key === "Enter") {
-                addEntry();
-            }
-        });
+        // Enter key support
+        amountInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') addEntry(); });
 
     </script>
 </body>
